@@ -1,0 +1,4 @@
+.stack-work/
+iscd-tg-model.cabal
+*~
+*.sqlite3
