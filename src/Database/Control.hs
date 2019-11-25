@@ -18,19 +18,16 @@ import Database.Persist.Sqlite (ConnectionPool, createSqlitePool)
 
 
 -- | Monad to execute database actions in
-type SqlM a = ReaderT ConnectionPool (SqlPersistT IO) a
+type SqlM a = SqlPersistT IO a
 
 
 -- | For running database actions in IO mainly
 runDatabase :: MonadIO m => ConnectionPool -> SqlM a -> m a
-runDatabase pool computation = do
-    let query = runReaderT computation pool
+runDatabase pool query = do
     liftIO $ runSqlPool query pool
 
 doMigrations :: SqlM ()
-doMigrations = do
-    pool <- ask
-    lift $ runSqlPool (runMigration migrateAll) pool
+doMigrations = runMigration migrateAll
 
 
 makeConnectionPool :: IO ConnectionPool

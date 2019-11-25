@@ -28,16 +28,20 @@ UserToObjectRight
     prima   User
     secunda Object
     right   Rights
+    deriving Show Eq
 UserToUserRight
     prima   User
-    secunda Object
+    secunda User
     right   Rights
+    deriving Show Eq
 ObjectToObjectRight
-    prima   User
+    prima   Object
     secunda Object
     right   Rights
+    deriving Show Eq
 ObjectToUserRight
-    prima   User
-    secunda Object
+    prima   Object
+    secunda User
     right   Rights
+    deriving Show Eq
 |]

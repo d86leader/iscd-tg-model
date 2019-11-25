@@ -9,4 +9,4 @@ main = do
     pool <- makeConnectionPool
     runDatabase pool $ do
         doMigrations
-        lift . liftIO . putStrLn $ "hello database"
+        liftIO . putStrLn $ "hello database"
