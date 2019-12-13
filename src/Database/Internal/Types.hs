@@ -17,7 +17,8 @@ import Database.Internal.Rights (Rights)
 
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
 User
-    name Text
+    name     Text
+    password Text
     deriving Show Eq
 Object
     name Text

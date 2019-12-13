@@ -35,10 +35,15 @@ makeConnectionPool = createSqlitePool connString connCount
     where connString = "test.sqlite3"
           connCount = 10
 
+printLogs :: Bool
+printLogs = True
 -- | Trivial logger for database, required for opening the connection pool
 instance MonadLogger IO where
-    monadLoggerLog _ _ _ msg = do
-        hPutStr stderr "Database says: "
-        hPutStrLn stderr . show . toLogStr $ msg
-        hFlush stderr
+    monadLoggerLog _ _ _ msg =
+        if not printLogs
+        then return ()
+        else do
+            hPutStr stderr "Database says: "
+            hPutStrLn stderr . show . toLogStr $ msg
+            hFlush stderr
 

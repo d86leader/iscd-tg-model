@@ -23,13 +23,13 @@ import Database.Persist          ( selectList, count, insert, deleteWhere, updat
 import Data.Text                 (Text)
 
 import Database.Types
-    ( User (User), Object (Object, objectName, objectBody)
+    ( User (User, userName, userPassword), Object (Object, objectName, objectBody)
     , UserToObjectRight   (UserToObjectRight, userToObjectRightRight)
     , UserToUserRight     (UserToUserRight, userToUserRightRight)
     , ObjectToObjectRight (ObjectToObjectRight)
     , ObjectToUserRight   (ObjectToUserRight)
     , Rights (Read, Write, Take, Grant)
-    , EntityField ( UserName, ObjectName, ObjectBody
+    , EntityField ( UserName, UserPassword, ObjectName, ObjectBody
                   , UserToUserRightPrima, UserToUserRightSecunda, UserToUserRightRight
                   , UserToObjectRightPrima, UserToObjectRightSecunda, UserToObjectRightRight
                   )
@@ -51,13 +51,13 @@ type Should a = Either Text a
 -- Simple creation routines
 
 
-createUser :: Text -> SqlM (Should User)
-createUser name = do
+createUser :: Text -> Text -> SqlM (Should User)
+createUser name password = do
     matches <- count $ [UserName ==. name]
     if matches /= 0
       then return . Left $ "User with this name exists"
       else do
-        key <- insert $ User name
+        key <- insert $ User name password
         maybeUser <- get key
         case maybeUser of Nothing -> return . Left $ "Something went very wrong"
                           Just user -> return . Right $ user
