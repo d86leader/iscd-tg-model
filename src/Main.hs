@@ -31,30 +31,41 @@ checkShould v = v >>= \case
 parseStr :: User -> Text -> SqlM Text
 parseStr current_user str =
     case words str of
-        "create" : "user" : user : password : _ -> do
-            obj <- checkShould $ createUser user password
-            forM_ [Read, Write, Take, Grant] $ \right -> do
-                addRightsNoCheck right current_user obj
-            forM_ [Read, Write, Take, Grant] $ \right -> do
-                addRightsNoCheck right obj obj
-            pure "The user is created"
+        "create" : "user" : user : password : _ ->
+            createUser user password >>= \case
+                Left msg  -> pure msg
+                Right obj -> do
+                    forM_ [Read, Write, Take, Grant] $ \right -> do
+                        addRightsNoCheck right current_user obj
+                    forM_ [Read, Write, Take, Grant] $ \right -> do
+                        addRightsNoCheck right obj obj
+                    pure "The user is created"
 
         "create" : "object" : name : rest -> do
             let text = unwords rest
-            obj <- checkShould $ createObject name text
-            forM_ [Read, Write, Take, Grant] $ \right -> do
-                addRightsNoCheck right current_user obj
-            pure "The object is created"
+            createObject name text >>= \case
+                Left msg  -> pure msg
+                Right obj -> do
+                    forM_ [Read, Write, Take, Grant] $ \right -> do
+                        addRightsNoCheck right current_user obj
+                    pure "The object is created"
 
         "write" : object : rest -> do
-            obj <- checkShould $ getObject object
             let text = unwords rest
-            _ <- checkShould $ write current_user obj text
-            pure "Object is updated"
+            getObject object >>= \case
+                Left msg  -> pure msg
+                Right obj -> 
+                    write current_user obj text >>= \case
+                        Left msg -> pure msg
+                        _ -> pure "Object is updated"
 
         "read" : object : _ -> do
-            obj <- checkShould $ getObject object
-            checkShould $ read current_user obj
+            getObject object >>= \case
+                Left msg  -> pure msg
+                Right obj -> 
+                    read current_user obj >>= \case
+                        Left msg   -> pure msg
+                        Right text -> pure text
 
         -- grants
 
@@ -62,41 +73,53 @@ parseStr current_user str =
             case readMaybe (unpack right) :: Maybe Rights
             of
                 Nothing -> pure "can't parse rights"
-                Just r -> do
-                    obj <- checkShould $ getObject object
-                    usr <- checkShould $ getUser user
-                    _ <- checkShould $ grant (r, obj)  current_user usr
-                    pure "The right is granted"
+                Just r  -> getObject object >>= \case
+                        Left msg  -> pure msg
+                        Right obj -> getUser user >>= \case
+                                Left msg  -> pure msg
+                                Right usr -> 
+                                    grant (r, obj)  current_user usr >>= \case
+                                        Left msg -> pure msg
+                                        _ -> pure "The right is granted"
 
         "grant" : right : "for" : "user" : object : "to" : "user" : user : _ ->
             case readMaybe (unpack right) :: Maybe Rights
             of
                 Nothing -> pure "can't parse rights"
-                Just r -> do
-                    obj <- checkShould $ getUser object
-                    usr <- checkShould $ getUser user
-                    _ <- checkShould $ grant (r, obj)  current_user usr
-                    pure "The right is granted"
+                Just r  -> getUser object >>= \case
+                        Left msg  -> pure msg
+                        Right obj -> getUser user >>= \case
+                                Left msg  -> pure msg
+                                Right usr -> 
+                                    grant (r, obj)  current_user usr >>= \case
+                                        Left msg -> pure msg
+                                        _ -> pure "The right is granted"
 
         "grant" : right : "for" : "user" : object : "to" : "object" : user : _ ->
             case readMaybe (unpack right) :: Maybe Rights
             of
                 Nothing -> pure "can't parse rights"
-                Just r -> do
-                    obj <- checkShould $ getUser object
-                    usr <- checkShould $ getObject user
-                    _ <- checkShould $ grant (r, obj)  current_user usr
-                    pure "The right is granted"
+                Just r  -> getUser object >>= \case
+                        Left msg  -> pure msg
+                        Right obj -> getObject user >>= \case
+                                Left msg  -> pure msg
+                                Right usr -> 
+                                    grant (r, obj)  current_user usr >>= \case
+                                        Left msg -> pure msg
+                                        _ -> pure "The right is granted"
 
         "grant" : right : "for" : "object" : object : "to" : "object" : user : _ ->
             case readMaybe (unpack right) :: Maybe Rights
             of
                 Nothing -> pure "can't parse rights"
-                Just r -> do
-                    obj <- checkShould $ getObject object
-                    usr <- checkShould $ getObject user
-                    _ <- checkShould $ grant (r, obj)  current_user usr
-                    pure "The right is granted"
+                Just r  -> getObject object >>= \case
+                        Left msg  -> pure msg
+                        Right obj -> getObject user >>= \case
+                                Left msg  -> pure msg
+                                Right usr -> 
+                                    grant (r, obj)  current_user usr >>= \case
+                                        Left msg -> pure msg
+                                        _ -> pure "The right is granted"
 
         -- takes
 
@@ -104,41 +127,53 @@ parseStr current_user str =
             case readMaybe (unpack right) :: Maybe Rights
             of
                 Nothing -> pure "can't parse rights"
-                Just r -> do
-                    obj <- checkShould $ getObject object
-                    usr <- checkShould $ getUser user
-                    _ <- checkShould $ take (r, obj)  current_user usr
-                    pure "The right is taken"
+                Just r  -> getObject object >>= \case
+                    Left msg  -> pure msg
+                    Right obj -> getUser user >>= \case
+                        Left msg  -> pure msg
+                        Right usr ->
+                            take (r, obj)  current_user usr >>= \case
+                                Left msg -> pure msg
+                                _ -> pure "The right is taken"
 
         "take" : right : "to" : "user" : object : "from" : "user" : user : _ ->
             case readMaybe (unpack right) :: Maybe Rights
             of
                 Nothing -> pure "can't parse rights"
-                Just r -> do
-                    obj <- checkShould $ getUser object
-                    usr <- checkShould $ getUser user
-                    _ <- checkShould $ take (r, obj)  current_user usr
-                    pure "The right is taken"
+                Just r  -> getUser object >>= \case
+                    Left msg  -> pure msg
+                    Right obj -> getUser user >>= \case
+                        Left msg  -> pure msg
+                        Right usr ->
+                            take (r, obj)  current_user usr >>= \case
+                                Left msg -> pure msg
+                                _ -> pure "The right is taken"
 
         "take" : right : "to" : "user" : object : "from" : "object" : user : _ ->
             case readMaybe (unpack right) :: Maybe Rights
             of
                 Nothing -> pure "can't parse rights"
-                Just r -> do
-                    obj <- checkShould $ getUser object
-                    usr <- checkShould $ getObject user
-                    _ <- checkShould $ take (r, obj)  current_user usr
-                    pure "The right is taken"
+                Just r  -> getUser object >>= \case
+                    Left msg  -> pure msg
+                    Right obj -> getObject user >>= \case
+                        Left msg  -> pure msg
+                        Right usr ->
+                            take (r, obj)  current_user usr >>= \case
+                                Left msg -> pure msg
+                                _ -> pure "The right is taken"
 
         "take" : right : "to" : "object" : object : "from" : "object" : user : _ ->
             case readMaybe (unpack right) :: Maybe Rights
             of
                 Nothing -> pure "can't parse rights"
-                Just r -> do
-                    obj <- checkShould $ getObject object
-                    usr <- checkShould $ getObject user
-                    _ <- checkShould $ take (r, obj)  current_user usr
-                    pure "The right is taken"
+                Just r -> getObject object >>= \case
+                    Left msg  -> pure msg
+                    Right obj -> getObject user >>= \case
+                        Left msg  -> pure msg
+                        Right usr ->
+                            take (r, obj)  current_user usr >>= \case
+                                Left msg -> pure msg
+                                _ -> pure "The right is taken"
 
         -- disposes
 
@@ -146,19 +181,21 @@ parseStr current_user str =
             case readMaybe (unpack right) :: Maybe Rights
             of
                 Nothing -> pure "can't parse rights"
-                Just r -> do
-                    obj <- checkShould $ getObject object
-                    _ <- checkShould $ dispose r current_user obj
-                    pure "The right is disposed"
+                Just r  -> getObject object >>= \case
+                    Left msg  -> pure msg
+                    Right obj -> dispose r current_user obj >>= \case
+                        Left msg -> pure msg
+                        _ -> pure "The right is disposed"
 
         "dispose" : right : "to" : "user" : object : _ ->
             case readMaybe (unpack right) :: Maybe Rights
             of
                 Nothing -> pure "can't parse rights"
-                Just r -> do
-                    obj <- checkShould $ getUser object
-                    _ <- checkShould $ dispose r current_user obj
-                    pure "The right is disposed"
+                Just r  -> getUser object >>= \case
+                    Left msg  -> pure msg
+                    Right obj -> dispose r current_user obj >>= \case
+                        Left msg -> pure msg
+                        _ -> pure "The right is disposed"
 
         "exit" : [] -> pure ""
 
