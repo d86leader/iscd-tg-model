@@ -3,6 +3,7 @@
 module Main where
 
 import Actions
+import Control.Monad          (forM_)
 import Control.Monad.Fail     (fail)
 import Control.Monad.IO.Class (liftIO)
 import Data.Monoid            ((<>))
@@ -11,7 +12,7 @@ import Database.Control
     (SqlM, doMigrations, makeConnectionPool, runDatabase)
 import Database.Persist       (count, entityVal, selectFirst, (==.))
 import Database.Persist.Sql   (transactionSave)
-import Database.Types         (Rights)
+import Database.Types         (Rights (Read, Write, Take, Grant))
 import Database.Types
     (EntityField (ObjectName, UserName, UserPassword), Object, User)
 import System.IO              (hFlush, stdout)
@@ -31,12 +32,16 @@ parseStr :: User -> Text -> SqlM Text
 parseStr current_user str =
     case words str of
         "create" : "user" : user : password : _ -> do
-            _ <- checkShould $ createUser user password
+            obj <- checkShould $ createUser user password
+            forM_ [Read, Write, Take, Grant] $ \right -> do
+                addRightsNoCheck right current_user obj
             pure "The user is created"
 
         "create" : "object" : name : rest -> do
             let text = unwords rest
-            _ <- checkShould $ createObject name text
+            obj <- checkShould $ createObject name text
+            forM_ [Read, Write, Take, Grant] $ \right -> do
+                addRightsNoCheck right current_user obj
             pure "The object is created"
 
         "write" : object : rest -> do
@@ -172,7 +177,7 @@ main = do
     pool <- makeConnectionPool
     runDatabase pool $ do
         doMigrations
-        _ <- checkShould $ createUser "admin" "123"
+        _ <- createUser "admin" "123"
         name <- liftIO getUserName
         pwd  <- liftIO getPassword
         user <- checkShould $ authorize name pwd
