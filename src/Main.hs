@@ -35,6 +35,8 @@ parseStr current_user str =
             obj <- checkShould $ createUser user password
             forM_ [Read, Write, Take, Grant] $ \right -> do
                 addRightsNoCheck right current_user obj
+            forM_ [Read, Write, Take, Grant] $ \right -> do
+                addRightsNoCheck right obj obj
             pure "The user is created"
 
         "create" : "object" : name : rest -> do
@@ -177,7 +179,12 @@ main = do
     pool <- makeConnectionPool
     runDatabase pool $ do
         doMigrations
-        _ <- createUser "admin" "123"
+        mbAdmin <- createUser "admin" "123"
+        case mbAdmin of
+          Right admin ->
+            forM_ [Read, Write, Take, Grant] $ \right ->
+                addRightsNoCheck right admin admin
+          _ -> pure ()
         name <- liftIO getUserName
         pwd  <- liftIO getPassword
         user <- checkShould $ authorize name pwd
