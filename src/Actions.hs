@@ -17,21 +17,25 @@ module Actions
 import Database.Control (SqlM)
 import Database.Persist ( selectList, count, insert, deleteWhere, updateWhere
                         , (==.), (=.)
-                        , Key, entityKey, entityVal
+                        , entityVal
                         , Filter
                         )
 import Data.Text        (Text)
 
 import Database.Types
-    ( User (User, userName, userPassword), Object (Object, objectName, objectBody)
+    ( User (User), Object (Object, objectName, objectBody)
     , UserToObjectRight   (UserToObjectRight, userToObjectRightRight)
     , UserToUserRight     (UserToUserRight, userToUserRightRight)
+    , ObjectToUserRight   (ObjectToUserRight, objectToUserRightRight)
+    , ObjectToObjectRight (ObjectToObjectRight, objectToObjectRightRight)
     , ObjectToObjectRight (ObjectToObjectRight)
     , ObjectToUserRight   (ObjectToUserRight)
     , Rights (Read, Write, Take, Grant)
-    , EntityField ( UserName, UserPassword, ObjectName, ObjectBody
+    , EntityField ( UserName, ObjectName, ObjectBody
                   , UserToUserRightPrima, UserToUserRightSecunda, UserToUserRightRight
                   , UserToObjectRightPrima, UserToObjectRightSecunda, UserToObjectRightRight
+                  , ObjectToObjectRightPrima, ObjectToObjectRightSecunda, ObjectToObjectRightRight
+                  , ObjectToUserRightPrima, ObjectToUserRightSecunda, ObjectToUserRightRight
                   )
     )
 import Data.Proxy (Proxy (Proxy))
@@ -118,6 +122,20 @@ instance Related User Object UserToObjectRight where
     filtersSecunda _ = (==.) UserToObjectRightSecunda
     filtersRight   _ = (==.) UserToObjectRightRight
     extractRight   _ =       userToObjectRightRight
+
+instance Related Object User ObjectToUserRight where
+    relation       =         ObjectToUserRight
+    filtersPrima   _ = (==.) ObjectToUserRightPrima
+    filtersSecunda _ = (==.) ObjectToUserRightSecunda
+    filtersRight   _ = (==.) ObjectToUserRightRight
+    extractRight   _ =       objectToUserRightRight
+
+instance Related Object Object ObjectToObjectRight where
+    relation       =           ObjectToObjectRight
+    filtersPrima   _ = (==.)   ObjectToObjectRightPrima
+    filtersSecunda _ = (==.)   ObjectToObjectRightSecunda
+    filtersRight   _ = (==.)   ObjectToObjectRightRight
+    extractRight   _ =         objectToObjectRightRight
 
 asProxy :: a -> Proxy a
 asProxy = const Proxy

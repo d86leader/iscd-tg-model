@@ -36,7 +36,7 @@ makeConnectionPool = createSqlitePool connString connCount
           connCount = 10
 
 printLogs :: Bool
-printLogs = True
+printLogs = False
 -- | Trivial logger for database, required for opening the connection pool
 instance MonadLogger IO where
     monadLoggerLog _ _ _ msg =

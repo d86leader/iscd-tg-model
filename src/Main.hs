@@ -56,7 +56,9 @@ parseStr current_user str =
             obj <- checkShould $ getObject object
             checkShould $ read current_user obj
 
-        "grant" : right : "for" : "object" : object : "to" : user : _ ->
+        -- grants
+
+        "grant" : right : "for" : "object" : object : "to" : "user" : user : _ ->
             case readMaybe (unpack right) :: Maybe Rights
             of
                 Nothing -> pure "can't parse rights"
@@ -66,7 +68,7 @@ parseStr current_user str =
                     _ <- checkShould $ grant (r, obj)  current_user usr
                     pure "The right is granted"
 
-        "grant" : right : "for" : "user" : object : "to" : user : _ ->
+        "grant" : right : "for" : "user" : object : "to" : "user" : user : _ ->
             case readMaybe (unpack right) :: Maybe Rights
             of
                 Nothing -> pure "can't parse rights"
@@ -76,7 +78,29 @@ parseStr current_user str =
                     _ <- checkShould $ grant (r, obj)  current_user usr
                     pure "The right is granted"
 
-        "take" : right : "to" : "object" : object : "from" : user : _ ->
+        "grant" : right : "for" : "user" : object : "to" : "object" : user : _ ->
+            case readMaybe (unpack right) :: Maybe Rights
+            of
+                Nothing -> pure "can't parse rights"
+                Just r -> do
+                    obj <- checkShould $ getUser object
+                    usr <- checkShould $ getObject user
+                    _ <- checkShould $ grant (r, obj)  current_user usr
+                    pure "The right is granted"
+
+        "grant" : right : "for" : "object" : object : "to" : "object" : user : _ ->
+            case readMaybe (unpack right) :: Maybe Rights
+            of
+                Nothing -> pure "can't parse rights"
+                Just r -> do
+                    obj <- checkShould $ getObject object
+                    usr <- checkShould $ getObject user
+                    _ <- checkShould $ grant (r, obj)  current_user usr
+                    pure "The right is granted"
+
+        -- takes
+
+        "take" : right : "to" : "object" : object : "from" : "user" : user : _ ->
             case readMaybe (unpack right) :: Maybe Rights
             of
                 Nothing -> pure "can't parse rights"
@@ -86,7 +110,7 @@ parseStr current_user str =
                     _ <- checkShould $ take (r, obj)  current_user usr
                     pure "The right is taken"
 
-        "take" : right : "to" : "user" : object : "from" : user : _ ->
+        "take" : right : "to" : "user" : object : "from" : "user" : user : _ ->
             case readMaybe (unpack right) :: Maybe Rights
             of
                 Nothing -> pure "can't parse rights"
@@ -95,6 +119,28 @@ parseStr current_user str =
                     usr <- checkShould $ getUser user
                     _ <- checkShould $ take (r, obj)  current_user usr
                     pure "The right is taken"
+
+        "take" : right : "to" : "user" : object : "from" : "object" : user : _ ->
+            case readMaybe (unpack right) :: Maybe Rights
+            of
+                Nothing -> pure "can't parse rights"
+                Just r -> do
+                    obj <- checkShould $ getUser object
+                    usr <- checkShould $ getObject user
+                    _ <- checkShould $ take (r, obj)  current_user usr
+                    pure "The right is taken"
+
+        "take" : right : "to" : "object" : object : "from" : "object" : user : _ ->
+            case readMaybe (unpack right) :: Maybe Rights
+            of
+                Nothing -> pure "can't parse rights"
+                Just r -> do
+                    obj <- checkShould $ getObject object
+                    usr <- checkShould $ getObject user
+                    _ <- checkShould $ take (r, obj)  current_user usr
+                    pure "The right is taken"
+
+        -- disposes
 
         "dispose" : right : "to" : "object" : object : _ ->
             case readMaybe (unpack right) :: Maybe Rights
