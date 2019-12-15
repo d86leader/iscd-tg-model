@@ -14,13 +14,13 @@ module Actions
 -- Description: actions you can perform on entities in database
 
 
-import Database.Control          (SqlM)
-import Database.Persist          ( selectList, count, insert, deleteWhere, updateWhere
-                                 , (==.), (=.)
-                                 , Key, entityKey, entityVal
-                                 , Filter
-                                 )
-import Data.Text                 (Text)
+import Database.Control (SqlM)
+import Database.Persist ( selectList, count, insert, deleteWhere, updateWhere
+                        , (==.), (=.)
+                        , Key, entityKey, entityVal
+                        , Filter
+                        )
+import Data.Text        (Text)
 
 import Database.Types
     ( User (User, userName, userPassword), Object (Object, objectName, objectBody)
