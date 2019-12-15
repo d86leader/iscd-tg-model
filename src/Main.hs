@@ -10,11 +10,12 @@ import Data.Monoid            ((<>))
 import Data.Text              (Text, unpack, unwords, words)
 import Database.Control
     (SqlM, doMigrations, makeConnectionPool, runDatabase)
-import Database.Persist       (count, entityVal, selectFirst, (==.))
+import Database.Persist       (count, (==.))
 import Database.Persist.Sql   (transactionSave)
 import Database.Types         (Rights (Read, Write, Take, Grant))
 import Database.Types
-    (EntityField (ObjectName, UserName, UserPassword), Object, User)
+    (EntityField (UserName, UserPassword), User)
+import Requests
 import System.IO              (hFlush, stdout)
 import Text.Read              (readMaybe)
 
@@ -28,44 +29,23 @@ checkShould v = v >>= \case
                     >> fail "Aborting due to model error"  -- Maybe it's bad idea to throw error
     Right val    -> pure val
 
+
 parseStr :: User -> Text -> SqlM Text
 parseStr current_user str =
     case words str of
         "create" : "user" : user : password : _ ->
-            createUser user password >>= \case
-                Left msg  -> pure msg
-                Right obj -> do
-                    forM_ [Read, Write, Take, Grant] $ \right -> do
-                        addRightsNoCheck right current_user obj
-                    forM_ [Read, Write, Take, Grant] $ \right -> do
-                        addRightsNoCheck right obj obj
-                    pure "The user is created"
+            createUserSafe current_user user password
 
         "create" : "object" : name : rest -> do
             let text = unwords rest
-            createObject name text >>= \case
-                Left msg  -> pure msg
-                Right obj -> do
-                    forM_ [Read, Write, Take, Grant] $ \right -> do
-                        addRightsNoCheck right current_user obj
-                    pure "The object is created"
+            createObjectSafe current_user name text
 
         "write" : object : rest -> do
             let text = unwords rest
-            getObject object >>= \case
-                Left msg  -> pure msg
-                Right obj -> 
-                    write current_user obj text >>= \case
-                        Left msg -> pure msg
-                        _ -> pure "Object is updated"
+            writeSafe current_user object text
 
         "read" : object : _ -> do
-            getObject object >>= \case
-                Left msg  -> pure msg
-                Right obj -> 
-                    read current_user obj >>= \case
-                        Left msg   -> pure msg
-                        Right text -> pure text
+            readSafe current_user object
 
         -- grants
 
@@ -73,53 +53,25 @@ parseStr current_user str =
             case readMaybe (unpack right) :: Maybe Rights
             of
                 Nothing -> pure "can't parse rights"
-                Just r  -> getObject object >>= \case
-                        Left msg  -> pure msg
-                        Right obj -> getUser user >>= \case
-                                Left msg  -> pure msg
-                                Right usr -> 
-                                    grant (r, obj)  current_user usr >>= \case
-                                        Left msg -> pure msg
-                                        _ -> pure "The right is granted"
+                Just r  -> grantObjectToUser current_user r object user
 
         "grant" : right : "for" : "user" : object : "to" : "user" : user : _ ->
             case readMaybe (unpack right) :: Maybe Rights
             of
                 Nothing -> pure "can't parse rights"
-                Just r  -> getUser object >>= \case
-                        Left msg  -> pure msg
-                        Right obj -> getUser user >>= \case
-                                Left msg  -> pure msg
-                                Right usr -> 
-                                    grant (r, obj)  current_user usr >>= \case
-                                        Left msg -> pure msg
-                                        _ -> pure "The right is granted"
+                Just r  -> grantUserToUser current_user r object user
 
         "grant" : right : "for" : "user" : object : "to" : "object" : user : _ ->
             case readMaybe (unpack right) :: Maybe Rights
             of
                 Nothing -> pure "can't parse rights"
-                Just r  -> getUser object >>= \case
-                        Left msg  -> pure msg
-                        Right obj -> getObject user >>= \case
-                                Left msg  -> pure msg
-                                Right usr -> 
-                                    grant (r, obj)  current_user usr >>= \case
-                                        Left msg -> pure msg
-                                        _ -> pure "The right is granted"
+                Just r  -> grantUserToObject current_user r object user
 
         "grant" : right : "for" : "object" : object : "to" : "object" : user : _ ->
             case readMaybe (unpack right) :: Maybe Rights
             of
                 Nothing -> pure "can't parse rights"
-                Just r  -> getObject object >>= \case
-                        Left msg  -> pure msg
-                        Right obj -> getObject user >>= \case
-                                Left msg  -> pure msg
-                                Right usr -> 
-                                    grant (r, obj)  current_user usr >>= \case
-                                        Left msg -> pure msg
-                                        _ -> pure "The right is granted"
+                Just r  -> grantObjectToObject current_user r object user
 
         -- takes
 
@@ -127,53 +79,25 @@ parseStr current_user str =
             case readMaybe (unpack right) :: Maybe Rights
             of
                 Nothing -> pure "can't parse rights"
-                Just r  -> getObject object >>= \case
-                    Left msg  -> pure msg
-                    Right obj -> getUser user >>= \case
-                        Left msg  -> pure msg
-                        Right usr ->
-                            take (r, obj)  current_user usr >>= \case
-                                Left msg -> pure msg
-                                _ -> pure "The right is taken"
+                Just r  -> takeObjectFromUser current_user r object user
 
         "take" : right : "to" : "user" : object : "from" : "user" : user : _ ->
             case readMaybe (unpack right) :: Maybe Rights
             of
                 Nothing -> pure "can't parse rights"
-                Just r  -> getUser object >>= \case
-                    Left msg  -> pure msg
-                    Right obj -> getUser user >>= \case
-                        Left msg  -> pure msg
-                        Right usr ->
-                            take (r, obj)  current_user usr >>= \case
-                                Left msg -> pure msg
-                                _ -> pure "The right is taken"
+                Just r  -> takeUserFromUser current_user r object user
 
         "take" : right : "to" : "user" : object : "from" : "object" : user : _ ->
             case readMaybe (unpack right) :: Maybe Rights
             of
                 Nothing -> pure "can't parse rights"
-                Just r  -> getUser object >>= \case
-                    Left msg  -> pure msg
-                    Right obj -> getObject user >>= \case
-                        Left msg  -> pure msg
-                        Right usr ->
-                            take (r, obj)  current_user usr >>= \case
-                                Left msg -> pure msg
-                                _ -> pure "The right is taken"
+                Just r  -> takeUserFromObject current_user r object user
 
         "take" : right : "to" : "object" : object : "from" : "object" : user : _ ->
             case readMaybe (unpack right) :: Maybe Rights
             of
                 Nothing -> pure "can't parse rights"
-                Just r -> getObject object >>= \case
-                    Left msg  -> pure msg
-                    Right obj -> getObject user >>= \case
-                        Left msg  -> pure msg
-                        Right usr ->
-                            take (r, obj)  current_user usr >>= \case
-                                Left msg -> pure msg
-                                _ -> pure "The right is taken"
+                Just r  -> takeObjectFromObject current_user r object user
 
         -- disposes
 
@@ -181,21 +105,13 @@ parseStr current_user str =
             case readMaybe (unpack right) :: Maybe Rights
             of
                 Nothing -> pure "can't parse rights"
-                Just r  -> getObject object >>= \case
-                    Left msg  -> pure msg
-                    Right obj -> dispose r current_user obj >>= \case
-                        Left msg -> pure msg
-                        _ -> pure "The right is disposed"
+                Just r  -> disposeToObject current_user r object
 
         "dispose" : right : "to" : "user" : object : _ ->
             case readMaybe (unpack right) :: Maybe Rights
             of
                 Nothing -> pure "can't parse rights"
-                Just r  -> getUser object >>= \case
-                    Left msg  -> pure msg
-                    Right obj -> dispose r current_user obj >>= \case
-                        Left msg -> pure msg
-                        _ -> pure "The right is disposed"
+                Just r  -> disposeToUser current_user r object
 
         "exit" : [] -> pure ""
 
@@ -231,22 +147,6 @@ getPassword = do
     return pwd
 
 
-getUser :: Text -> SqlM (Either Text User)
-getUser name = do
-    mbUser <- selectFirst [UserName ==. name] []
-    case mbUser of
-        Nothing   -> return . Left $ "User with this name doesn't exist"
-        Just user -> return . Right . entityVal $ user
-
-
-getObject :: Text -> SqlM (Either Text Object)
-getObject name = do
-    mbObject <- selectFirst [ObjectName ==. name] []
-    case mbObject of
-        Nothing     -> return . Left $ "Object with this name doesn't exist"
-        Just object -> return . Right . entityVal $ object
-
-
 authorize :: Text -> Text -> SqlM (Either Text User)
 authorize name pwd = do
     matches <- count $ [ UserName ==. name
@@ -254,7 +154,6 @@ authorize name pwd = do
     if matches == 0
         then return . Left $ "Wrong name or password"
         else getUser $ name
-
 
 
 main :: IO ()
