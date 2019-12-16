@@ -8,16 +8,18 @@ import Control.Monad.Fail     (fail)
 import Control.Monad.IO.Class (liftIO)
 import Data.Monoid            ((<>))
 import Data.Text              (Text, unpack, unwords, words)
-import Database.Control
-    (SqlM, doMigrations, makeConnectionPool, runDatabase)
-import Database.Persist       (count, (==.))
+import Database.Persist       (count, (==.), Key)
 import Database.Persist.Sql   (transactionSave)
-import Database.Types         (Rights (Read, Write, Take, Grant))
-import Database.Types
-    (EntityField (UserName, UserPassword), User)
 import Requests
 import System.IO              (hFlush, stdout)
 import Text.Read              (readMaybe)
+
+import Database.Control
+    (SqlM, doMigrations, makeConnectionPool, runDatabase)
+import Database.Types
+    ( EntityField (UserName, UserPassword), User
+    , Rights (Read, Write, Take, Grant)
+    )
 
 import qualified Data.Text.IO as TIO
 
@@ -30,7 +32,7 @@ checkShould v = v >>= \case
     Right val    -> pure val
 
 
-parseStr :: User -> Text -> SqlM Text
+parseStr :: Key User -> Text -> SqlM Text
 parseStr current_user str =
     case words str of
         "create" : "user" : user : password : _ ->
@@ -118,7 +120,7 @@ parseStr current_user str =
         _ -> pure "Incorrect input"
 
 
-communicate :: User -> SqlM ()
+communicate :: Key User -> SqlM ()
 communicate user = do
     liftIO . putStr $ "> "
     liftIO . hFlush $ stdout
@@ -147,7 +149,7 @@ getPassword = do
     return pwd
 
 
-authorize :: Text -> Text -> SqlM (Either Text User)
+authorize :: Text -> Text -> SqlM (Either Text (Key User))
 authorize name pwd = do
     matches <- count $ [ UserName ==. name
                        , UserPassword ==. pwd]
