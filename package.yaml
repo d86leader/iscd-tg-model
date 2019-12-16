@@ -19,6 +19,7 @@ executables:
     - -Wcompat
     dependencies:
     - monad-logger
+    - network
     - persistent
     - persistent-sqlite
     - persistent-template

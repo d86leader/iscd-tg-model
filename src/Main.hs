@@ -1,9 +1,11 @@
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ImplicitParams    #-}
 module Main where
 
 import Actions
-import Control.Monad          (forM_)
+import Control.Concurrent     (forkFinally)
+import Control.Monad          (forM_, forever)
 import Control.Monad.Fail     (fail)
 import Control.Monad.IO.Class (liftIO)
 import Data.Monoid            ((<>))
@@ -11,7 +13,6 @@ import Data.Text              (Text, unpack, unwords, words)
 import Database.Persist       (count, (==.), Key)
 import Database.Persist.Sql   (transactionSave)
 import Requests
-import System.IO              (hFlush, stdout)
 import Text.Read              (readMaybe)
 
 import Database.Control
@@ -20,14 +21,23 @@ import Database.Types
     ( EntityField (UserName, UserPassword), User
     , Rights (Read, Write, Take, Grant)
     )
+import Network.Socket
+    (socket, socketToHandle, bind, setSocketOption, listen, accept, close)
+import System.IO
+    ( hFlush, hPutStr, hSetBuffering, hClose, Handle
+    , IOMode (ReadWriteMode), BufferMode (NoBuffering)
+    )
 
 import qualified Data.Text.IO as TIO
+import qualified Network.Socket as Socket
 
 import Prelude hiding (fail, read, take, unwords, words)
 
-checkShould :: SqlM (Either Text a) -> SqlM a
+
+checkShould :: (?hd :: Handle)
+            => SqlM (Either Text a) -> SqlM a
 checkShould v = v >>= \case
-    Left message -> (liftIO . TIO.putStrLn) ("Model error: " <> message)
+    Left message -> (liftIO . TIO.hPutStrLn ?hd) ("Model error: " <> message)
                     >> fail "Aborting due to model error"  -- Maybe it's bad idea to throw error
     Right val    -> pure val
 
@@ -120,33 +130,31 @@ parseStr current_user str =
         _ -> pure "Incorrect input"
 
 
-communicate :: Key User -> SqlM ()
+communicate :: (?hd :: Handle) => Key User -> SqlM ()
 communicate user = do
-    liftIO . putStr $ "> "
-    liftIO . hFlush $ stdout
-    str <- liftIO TIO.getLine
+    liftIO . hPutStr ?hd $ "> "
+    liftIO . hFlush $ ?hd
+    str <- liftIO . TIO.hGetLine $ ?hd
     response <- parseStr user str
-    liftIO . TIO.putStrLn $ response
+    liftIO . TIO.hPutStrLn ?hd $ response
     _ <- transactionSave
     if response == ""
     then pure ()
     else communicate user
 
 
-getUserName :: IO Text
+getUserName :: (?hd :: Handle) => IO Text
 getUserName = do
-    putStr $ "Enter name: "
-    hFlush stdout
-    name <- TIO.getLine
-    return name
+    hPutStr ?hd "Enter name: "
+    hFlush ?hd
+    TIO.hGetLine ?hd
 
 
-getPassword :: IO Text
+getPassword :: (?hd :: Handle) => IO Text
 getPassword = do
-    putStr $ "Enter your password: "
-    hFlush stdout
-    pwd <- TIO.getLine
-    return pwd
+    hPutStr ?hd "Enter your password: "
+    hFlush ?hd
+    TIO.hGetLine ?hd
 
 
 authorize :: Text -> Text -> SqlM (Either Text (Key User))
@@ -169,21 +177,29 @@ main = do
             forM_ [Read, Write, Take, Grant] $ \right ->
                 addRightsNoCheck right admin admin
           _ -> pure ()
-        name <- liftIO getUserName
-        pwd  <- liftIO getPassword
-        user <- checkShould $ authorize name pwd
-        communicate $ user
+    putStrLn "Connected to database"
+    --
+    sock <- socket Socket.AF_INET Socket.Stream 0
+    setSocketOption sock Socket.ReuseAddr 1
+    let port = 2222
+    bind sock (Socket.SockAddrInet port Socket.iNADDR_ANY)
+    listen sock 2
+    putStrLn $ "Server listening on " ++ show port
+    --
+    forever $ do
+        (connSock, connAddr) <- accept sock
+        putStrLn $ "Got connection from " ++ show connAddr
+        --
+        handle <- socketToHandle connSock ReadWriteMode
+        hSetBuffering handle NoBuffering
+        forkFinally (runDatabase pool $ handleConnection handle)
+                    (const $ close connSock)
 
-        -- liftIO . putStrLn $ "hello database"
-        --
-        -- book   <- checkShould $ createObject "kampf" "mein"
-        -- add all rights to this book
-        -- forM_ [Read, Write, Take, Grant] $ \right -> do
-        --     addRightsNoCheck right hitler book
-        --
-        -- stalin <- checkShould $ createUser "stalin" "stalinpass"
-        -- addRightsNoCheck Grant hitler stalin
-        --
-        -- checkShould $ grant (Read, book) hitler stalin
-        -- content <- checkShould $ read stalin book
-        -- liftIO $ TIO.putStrLn content
+
+handleConnection :: Handle -> SqlM ()
+handleConnection handle = let ?hd = handle in do
+    name <- liftIO getUserName
+    pwd  <- liftIO getPassword
+    user <- checkShould $ authorize name pwd
+    communicate $ user
+    liftIO $ hClose handle
