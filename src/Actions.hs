@@ -1,8 +1,10 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE MultiWayIf #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE LambdaCase             #-}
+{-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE MultiWayIf             #-}
+{-# LANGUAGE OverloadedStrings      #-}
+{-# LANGUAGE TypeFamilies           #-}
 module Actions
 ( Entity (..)
 , addRightsNoCheck
@@ -19,11 +21,12 @@ import Database.Persist ( selectList, count, insert, deleteWhere, updateWhere
                         , (==.), (=.)
                         , entityVal
                         , Filter
+                        , Key
                         )
 import Data.Text        (Text)
 
 import Database.Types
-    ( User (User), Object (Object, objectName, objectBody)
+    ( User (User), Object (Object, objectBody)
     , UserToObjectRight   (UserToObjectRight, userToObjectRightRight)
     , UserToUserRight     (UserToUserRight, userToUserRightRight)
     , ObjectToUserRight   (ObjectToUserRight, objectToUserRightRight)
@@ -31,7 +34,7 @@ import Database.Types
     , ObjectToObjectRight (ObjectToObjectRight)
     , ObjectToUserRight   (ObjectToUserRight)
     , Rights (Read, Write, Take, Grant)
-    , EntityField ( UserName, ObjectName, ObjectBody
+    , EntityField ( UserName, ObjectName, ObjectBody, ObjectId
                   , UserToUserRightPrima, UserToUserRightSecunda, UserToUserRightRight
                   , UserToObjectRightPrima, UserToObjectRightSecunda, UserToObjectRightRight
                   , ObjectToObjectRightPrima, ObjectToObjectRightSecunda, ObjectToObjectRightRight
@@ -55,47 +58,44 @@ type Should a = Either Text a
 -- Simple creation routines
 
 
-createUser :: Text -> Text -> SqlM (Should User)
+createUser :: Text -> Text -> SqlM (Should (Key User))
 createUser name password = do
     matches <- count $ [UserName ==. name]
     if matches /= 0
       then return . Left $ "User with this name exists"
       else do
-        key <- insert $ User name password
-        maybeUser <- get key
-        case maybeUser of Nothing -> return . Left $ "Something went very wrong"
-                          Just user -> return . Right $ user
+        fmap Right . insert $ User name password
 
-createObject :: Text -> Text -> SqlM (Should Object)
+createObject :: Text -> Text -> SqlM (Should (Key Object))
 createObject name content = do
     matches <- count $ [ObjectName ==. name]
     if matches /= 0
       then return . Left $ "Object with this name exists"
       else do
-        key <- insert $ Object name content
-        maybeObj <- get key
-        case maybeObj of Nothing -> return . Left $ "Something went very wrong"
-                         Just obj -> return . Right $ obj
+        fmap Right . insert $ Object name content
 
 
 -- Object actions
 
 
-write :: User -> Object -> Text -> SqlM (Should ())
+write :: Key User -> Key Object -> Text -> SqlM (Should ())
 write user object text = do
     rights <- checkRights user object
     if Write `elem` rights
-      then updateWhere [ObjectName ==. objectName object]
+      then updateWhere [ObjectId ==. object]
                        [ObjectBody =. text]
            >> return (Right ())
       else return . Left $ "No right to write"
 
 
-read :: User -> Object -> SqlM (Should Text)
+read :: Key User -> Key Object -> SqlM (Should Text)
 read user object = do
     rights <- checkRights user object
     if Read `elem` rights
-      then return . Right . objectBody $ object
+      then get object >>= \case
+        Just obj -> pure . Right . objectBody $ obj
+        Nothing  -> pure . Right $
+            "Attempting to access deleted object (possibly a race)"
       else return . Left $ "No right to read"
 
 
@@ -109,33 +109,33 @@ class (PersistEntity r, PersistEntityBackend r ~ SqlBackend) => Related p s r | 
     filtersRight   :: Proxy (p, s) -> Rights -> Filter r
     extractRight   :: Proxy (p, s) -> r -> Rights
 
-instance Related User User   UserToUserRight where
-    relation       =         UserToUserRight
-    filtersPrima   _ = (==.) UserToUserRightPrima
-    filtersSecunda _ = (==.) UserToUserRightSecunda
-    filtersRight   _ = (==.) UserToUserRightRight
-    extractRight   _ =       userToUserRightRight
+instance Related (Key User) (Key User) UserToUserRight where
+    relation       =           UserToUserRight
+    filtersPrima   _ = (==.)   UserToUserRightPrima
+    filtersSecunda _ = (==.)   UserToUserRightSecunda
+    filtersRight   _ = (==.)   UserToUserRightRight
+    extractRight   _ =         userToUserRightRight
 
-instance Related User Object UserToObjectRight where
-    relation       =         UserToObjectRight
-    filtersPrima   _ = (==.) UserToObjectRightPrima
-    filtersSecunda _ = (==.) UserToObjectRightSecunda
-    filtersRight   _ = (==.) UserToObjectRightRight
-    extractRight   _ =       userToObjectRightRight
+instance Related (Key User) (Key Object) UserToObjectRight where
+    relation       =             UserToObjectRight
+    filtersPrima   _ = (==.)     UserToObjectRightPrima
+    filtersSecunda _ = (==.)     UserToObjectRightSecunda
+    filtersRight   _ = (==.)     UserToObjectRightRight
+    extractRight   _ =           userToObjectRightRight
 
-instance Related Object User ObjectToUserRight where
-    relation       =         ObjectToUserRight
-    filtersPrima   _ = (==.) ObjectToUserRightPrima
-    filtersSecunda _ = (==.) ObjectToUserRightSecunda
-    filtersRight   _ = (==.) ObjectToUserRightRight
-    extractRight   _ =       objectToUserRightRight
+instance Related (Key Object) (Key User) ObjectToUserRight where
+    relation       =             ObjectToUserRight
+    filtersPrima   _ = (==.)     ObjectToUserRightPrima
+    filtersSecunda _ = (==.)     ObjectToUserRightSecunda
+    filtersRight   _ = (==.)     ObjectToUserRightRight
+    extractRight   _ =           objectToUserRightRight
 
-instance Related Object Object ObjectToObjectRight where
-    relation       =           ObjectToObjectRight
-    filtersPrima   _ = (==.)   ObjectToObjectRightPrima
-    filtersSecunda _ = (==.)   ObjectToObjectRightSecunda
-    filtersRight   _ = (==.)   ObjectToObjectRightRight
-    extractRight   _ =         objectToObjectRightRight
+instance Related (Key Object) (Key Object) ObjectToObjectRight where
+    relation       =               ObjectToObjectRight
+    filtersPrima   _ = (==.)       ObjectToObjectRightPrima
+    filtersSecunda _ = (==.)       ObjectToObjectRightSecunda
+    filtersRight   _ = (==.)       ObjectToObjectRightRight
+    extractRight   _ =             objectToObjectRightRight
 
 asProxy :: a -> Proxy a
 asProxy = const Proxy

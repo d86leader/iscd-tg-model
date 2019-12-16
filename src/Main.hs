@@ -8,15 +8,17 @@ import Control.Monad.Fail     (fail)
 import Control.Monad.IO.Class (liftIO)
 import Data.Monoid            ((<>))
 import Data.Text              (Text, unpack, unwords, words)
-import Database.Control
-    (SqlM, doMigrations, makeConnectionPool, runDatabase)
-import Database.Persist       (count, entityVal, selectFirst, (==.))
+import Database.Persist       (count, entityKey, selectFirst, (==.), Key)
 import Database.Persist.Sql   (transactionSave)
-import Database.Types         (Rights (Read, Write, Take, Grant))
-import Database.Types
-    (EntityField (ObjectName, UserName, UserPassword), Object, User)
 import System.IO              (hFlush, stdout)
 import Text.Read              (readMaybe)
+
+import Database.Control
+    (SqlM, doMigrations, makeConnectionPool, runDatabase)
+import Database.Types
+    ( EntityField (ObjectName, UserName, UserPassword), Object, User
+    , Rights (Read, Write, Take, Grant)
+    )
 
 import qualified Data.Text.IO as TIO
 
@@ -28,7 +30,7 @@ checkShould v = v >>= \case
                     >> fail "Aborting due to model error"  -- Maybe it's bad idea to throw error
     Right val    -> pure val
 
-parseStr :: User -> Text -> SqlM Text
+parseStr :: Key User -> Text -> SqlM Text
 parseStr current_user str =
     case words str of
         "create" : "user" : user : password : _ -> do
@@ -165,7 +167,7 @@ parseStr current_user str =
         _ -> pure "Incorrect input"
 
 
-communicate :: User -> SqlM ()
+communicate :: Key User -> SqlM ()
 communicate user = do
     liftIO . putStr $ "> "
     liftIO . hFlush $ stdout
@@ -194,23 +196,23 @@ getPassword = do
     return pwd
 
 
-getUser :: Text -> SqlM (Either Text User)
+getUser :: Text -> SqlM (Either Text (Key User))
 getUser name = do
     mbUser <- selectFirst [UserName ==. name] []
     case mbUser of
         Nothing   -> return . Left $ "User with this name doesn't exist"
-        Just user -> return . Right . entityVal $ user
+        Just user -> return . Right . entityKey $ user
 
 
-getObject :: Text -> SqlM (Either Text Object)
+getObject :: Text -> SqlM (Either Text (Key Object))
 getObject name = do
     mbObject <- selectFirst [ObjectName ==. name] []
     case mbObject of
         Nothing     -> return . Left $ "Object with this name doesn't exist"
-        Just object -> return . Right . entityVal $ object
+        Just object -> return . Right . entityKey $ object
 
 
-authorize :: Text -> Text -> SqlM (Either Text User)
+authorize :: Text -> Text -> SqlM (Either Text (Key User))
 authorize name pwd = do
     matches <- count $ [ UserName ==. name
                        , UserPassword ==. pwd]

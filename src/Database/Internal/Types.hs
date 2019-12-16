@@ -26,23 +26,23 @@ Object
     deriving Show Eq
 
 UserToObjectRight
-    prima   User
-    secunda Object
+    prima   UserId
+    secunda ObjectId
     right   Rights
     deriving Show Eq
 UserToUserRight
-    prima   User
-    secunda User
+    prima   UserId
+    secunda UserId
     right   Rights
     deriving Show Eq
 ObjectToObjectRight
-    prima   Object
-    secunda Object
+    prima   ObjectId
+    secunda ObjectId
     right   Rights
     deriving Show Eq
 ObjectToUserRight
-    prima   Object
-    secunda User
+    prima   ObjectId
+    secunda UserId
     right   Rights
     deriving Show Eq
 |]
